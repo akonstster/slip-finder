@@ -1,0 +1,3 @@
+tests/fixtures/*.log binary
+*.bat text eol=crlf
+install.bat working-tree-encoding=CP866 eol=crlf

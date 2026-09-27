@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Найти чек</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --text: #1d2330; --muted: #6b7280; --line: #e3e6eb;
+    --accent: #1f6feb; --ok: #1a7f37; --bad: #b42318; --refund: #8a5a00;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.4 "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; background: var(--bg); padding: 16px 16px 8px; z-index: 1; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 10px; }
+  #q { width: 100%; font-size: 26px; padding: 12px 16px; border: 2px solid var(--line);
+       border-radius: 12px; outline: none; background: var(--card); }
+  #q:focus { border-color: var(--accent); }
+  .hint { color: var(--muted); font-size: 14px; margin: 6px 2px 10px; }
+  .periods { display: flex; gap: 8px; flex-wrap: wrap; }
+  .periods button { font: inherit; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+                    border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .periods button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 8px 16px 32px; }
+  .count { color: var(--muted); font-size: 14px; margin: 6px 2px; }
+  .slip { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: center;
+          background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 14px 16px; margin-bottom: 10px; }
+  .slip.fail { opacity: .55; }
+  .top { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .time { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .date { color: var(--muted); font-size: 14px; }
+  .amount { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .meta { color: var(--muted); font-size: 14px; }
+  .kind { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+          background: #e8f3ec; color: var(--ok); }
+  .kind.refund, .kind.cancel { background: #fff4db; color: var(--refund); }
+  .kind.fail { background: #fde8e6; color: var(--bad); }
+  .code { grid-row: 1 / span 2; grid-column: 2; display: flex; gap: 20px; text-align: right; }
+  .code .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .code .value { font: 700 30px/1.1 Consolas, "Courier New", monospace; letter-spacing: .08em; }
+  .code button { margin-top: 4px; font: inherit; font-size: 14px; padding: 6px 12px; cursor: pointer;
+                 border: 1px solid var(--accent); color: var(--accent); background: none; border-radius: 8px; }
+  .code button.done { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  footer { color: var(--muted); font-size: 13px; padding: 0 16px 24px; }
+  .warn { color: var(--bad); }
+  .toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .btn { font: inherit; font-size: 15px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+         border: 1px solid var(--accent); color: var(--accent); background: var(--card); }
+  .btn:disabled { opacity: .6; cursor: wait; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .linkbtn { font: inherit; font-size: 13px; background: none; border: none; color: var(--accent);
+             cursor: pointer; padding: 0; text-decoration: underline; }
+  .settings { margin-top: 12px; background: var(--card); border: 1px solid var(--line);
+              border-radius: 12px; padding: 14px 16px; color: var(--text); font-size: 15px; }
+  .settings label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .settings .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .settings input { flex: 1; min-width: 220px; font: 15px Consolas, monospace; padding: 8px 10px;
+                    border: 1px solid var(--line); border-radius: 8px; }
+  .settings .note { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .settings .msg { margin-top: 8px; font-size: 14px; }
+  .settings .msg.ok { color: var(--ok); }
+  .settings .msg.err { color: var(--bad); }
+  @media (max-width: 560px) {
+    .slip { grid-template-columns: 1fr; }
+    .code { grid-row: auto; grid-column: 1; text-align: left; }
+  }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Найти чек по карте</h1>
+  <input id="q" autofocus autocomplete="off"
+         placeholder="Сумма, время 14:30 или 4 последние цифры карты">
+  <div class="hint">Примеры: <b>258</b> · <b>258,50</b> · <b>14:30</b> (±15 мин) · <b>1234</b> (карта) · можно вместе: <b>258 14:30</b></div>
+  <div class="toolbar">
+    <div class="periods" id="periods">
+      <button data-p="1" class="on">Сегодня</button>
+      <button data-p="yesterday">Вчера</button>
+      <button data-p="3">3 дня</button>
+      <button data-p="7">Неделя</button>
+      <button data-p="30">Месяц</button>
+      <button data-p="all">Всё</button>
+    </div>
+    <button class="btn" id="scan" title="Если последней оплаты ещё нет в списке">⟳ Сканировать сейчас</button>
+  </div>
+</div></header>
+<main><div class="wrap">
+  <div class="count" id="count"></div>
+  <div id="list"></div>
+</div></main>
+<footer><div class="wrap">
+  <span id="status"></span> · <button class="linkbtn" id="toggleSettings">Настройки</button>
+  <div class="settings" id="settings" hidden>
+    <label for="logsDir">Папка логов ARCUS</label>
+    <div class="row">
+      <input id="logsDir" spellcheck="false" placeholder="C:\Arcus2\logs">
+      <button class="btn primary" id="saveSettings">Сохранить</button>
+    </div>
+    <div class="note">Обычно <b>C:\Arcus2\logs</b>. Уже найденные операции останутся в базе.</div>
+    <div class="msg" id="settingsMsg"></div>
+  </div>
+</div></footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let period = "1";
+let seq = 0;
+
+const rub = (kop) => (kop / 100).toLocaleString("ru-RU", { minimumFractionDigits: 2 }) + " ₽";
+const pad = (n) => String(n).padStart(2, "0");
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function card(s) {
+  const d = new Date(s.ts * 1000);
+  const fail = !s.approved;
+  const kindCls = fail ? "fail" : s.kind;
+  const kindText = fail ? (s.status || "Отказ") : s.kind_label;
+  const field = (label, value) => `<div>
+       <div class="label">${label}</div>
+       <div class="value">${esc(value)}</div>
+       <button data-copy="${esc(value)}">Копировать</button>
+     </div>`;
+  const code = (s.auth_code ? field("Код авторизации", s.auth_code) : `<div class="label">Кода нет</div>`)
+    + (s.receipt_no ? field("Номер чека", s.receipt_no) : "");
+  return `<div class="slip${fail ? " fail" : ""}">
+    <div class="top">
+      <span class="time">${pad(d.getHours())}:${pad(d.getMinutes())}</span>
+      <span class="date">${d.toLocaleDateString("ru-RU")}</span>
+      <span class="amount">${rub(s.amount_kop)}</span>
+      <span class="kind ${kindCls}">${esc(kindText)}</span>
+    </div>
+    <div class="code">${code}</div>
+    <div class="meta">${esc(s.card_type || "")} ${s.last4 ? "•••• " + esc(s.last4) : ""}
+      ${s.rrn ? " · RRN " + esc(s.rrn) : ""}</div>
+  </div>`;
+}
+
+async function search() {
+  const my = ++seq;
+  const q = $("q").value.trim();
+  const r = await fetch(`/api/search?period=${period}&q=${encodeURIComponent(q)}`);
+  const data = await r.json();
+  if (my !== seq) return;
+  const items = data.results;
+  $("count").textContent = !items.length ? ""
+    : data.truncated ? `Показаны последние ${items.length} — уточните поиск (сумма, время, карта)`
+    : `Найдено: ${items.length}`;
+  $("list").innerHTML = items.length
+    ? items.map(card).join("")
+    : `<div class="empty">Ничего не найдено${period !== "all" ? " — попробуйте период побольше" : ""}</div>`;
+}
+
+function renderStatus(s) {
+  const last = s.last_ts ? new Date(s.last_ts * 1000).toLocaleString("ru-RU") : "—";
+  const scanned = s.last_scan_ts ? new Date(s.last_scan_ts * 1000).toLocaleTimeString("ru-RU") : "—";
+  $("status").innerHTML = (s.logs_dir_ok ? "" : `<span class="warn">Папка логов не найдена: ${esc(s.logs_dir)}</span><br>`)
+    + `В базе операций: ${s.count} · последняя: ${last} · проверено: ${scanned} · версия ${esc(s.version || "")}`;
+}
+
+async function status() {
+  renderStatus(await (await fetch("/api/status")).json());
+}
+
+const postJSON = (url, body) => fetch(url, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+});
+
+$("scan").addEventListener("click", async () => {
+  const b = $("scan");
+  b.disabled = true; b.textContent = "Сканирую…";
+  try {
+    const s = await (await postJSON("/api/scan")).json();
+    renderStatus(s);
+    await search();
+    b.textContent = s.scanned ? `Добавлено файлов: ${s.scanned}` : "Новых операций нет";
+  } catch (_) {
+    b.textContent = "Ошибка сканирования";
+  }
+  setTimeout(() => { b.disabled = false; b.textContent = "⟳ Сканировать сейчас"; }, 2000);
+  $("q").focus();
+});
+
+$("toggleSettings").addEventListener("click", async () => {
+  const box = $("settings");
+  box.hidden = !box.hidden;
+  if (!box.hidden) {
+    $("settingsMsg").textContent = "";
+    $("logsDir").value = (await (await fetch("/api/settings")).json()).logs_dir;
+    $("logsDir").focus();
+  }
+});
+
+async function saveSettings() {
+  const msg = $("settingsMsg");
+  msg.className = "msg"; msg.textContent = "Сохраняю…";
+  const r = await postJSON("/api/settings", { logs_dir: $("logsDir").value });
+  const s = await r.json();
+  if (!r.ok) { msg.className = "msg err"; msg.textContent = s.error; return; }
+  msg.className = "msg ok";
+  msg.textContent = `Сохранено. Найдено новых файлов: ${s.scanned}`;
+  renderStatus(s);
+  search();
+}
+$("saveSettings").addEventListener("click", saveSettings);
+$("logsDir").addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
+
+let timer;
+$("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(search, 200); });
+$("q").addEventListener("keydown", (e) => { if (e.key === "Escape") { $("q").value = ""; search(); } });
+
+$("periods").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  period = b.dataset.p;
+  document.querySelectorAll("#periods button").forEach((x) => x.classList.toggle("on", x === b));
+  search();
+  $("q").focus();
+});
+
+$("list").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-copy]");
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copy); } catch (_) {}
+  b.textContent = "Скопировано"; b.classList.add("done");
+  setTimeout(() => { b.textContent = "Копировать"; b.classList.remove("done"); }, 1500);
+});
+
+// Новые оплаты подхватывает фоновый индексатор (раз в 30 с), здесь только обновляем список
+setInterval(() => { search(); status(); }, 15000);
+search(); status();
+</script>
+</body>
+</html>
